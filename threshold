@@ -1,0 +1,222 @@
+# 3f ΔT判别
+# ==================== 步骤6: 最终判决分析 ====================
+print("\n步骤6: 最终判决分析 (原文图3c逻辑)")
+print("-" * 40)
+
+# 计算两种ΔT情景的概率密度
+# 使用拟合的正态分布参数 mu, sigma
+prob_drop = norm.pdf(-1, loc=mu, scale=sigma)  # ΔT = -1°C 的概率密度
+prob_rise = norm.pdf(1, loc=mu, scale=sigma)   # ΔT = +1°C 的概率密度
+
+print(f"计算两种标准情景的概率密度:")
+print(f"  P(ΔT = -1°C) = {prob_drop:.6f}  (降温1°C)")
+print(f"  P(ΔT = +1°C) = {prob_rise:.6f}  (升温1°C)")
+
+# 比较两种情景的概率密度
+if prob_drop > prob_rise:
+    selected_deltaT = -1
+    selected_prob = prob_drop
+    sensitivity = "降温敏感"
+    deltaT_desc = "ΔT = -1°C (降温)"
+else:
+    selected_deltaT = 1
+    selected_prob = prob_rise
+    sensitivity = "升温敏感"
+    deltaT_desc = "ΔT = +1°C (升温)"
+
+print(f"\n比较结果:")
+print(f"  {sensitivity}: P(ΔT={selected_deltaT}°C) = {selected_prob:.6f}")
+
+# 确定最终分组
+if base_background == "During low temperature":
+    if selected_deltaT == -1:
+        final_group = "A_Low_Drop"
+        group_desc = "低温背景降温敏感组"
+    else:  # selected_deltaT == 1
+        final_group = "B_Low_Rise"
+        group_desc = "低温背景升温敏感组"
+else:  # base_background == "During high temperature"
+    if selected_deltaT == -1:
+        final_group = "C_High_Drop"
+        group_desc = "高温背景降温敏感组"
+    else:  # selected_deltaT == 1
+        final_group = "D_High_Rise"
+        group_desc = "高温背景升温敏感组"
+
+print(f"\n最终判决:")
+print(f"  1. 基础温度背景: {base_background}")
+print(f"  2. 敏感方向: {selected_deltaT}°C ({sensitivity})")
+print(f"  3. 归属组别: {final_group} ({group_desc})")
+print(f"  4. 参与排名的概率密度值: {selected_prob:.6f}")
+
+# 创建情景概率条形图
+print("\n步骤7: 生成情景概率条形图")
+print("-" * 40)
+
+# 准备数据
+scenarios = ['ΔT = -1°C (降温)', 'ΔT = +1°C (升温)']
+probabilities = [prob_drop, prob_rise]
+colors = [curve_color, curve_color]  # 使用与基础背景一致的颜色
+
+# 创建条形图
+plt.figure(figsize=(10, 6))
+
+# 绘制条形
+bars = plt.bar(scenarios, probabilities, color=colors, alpha=0.7, 
+               edgecolor='black', linewidth=1.5)
+
+# 标记选中的情景
+if selected_deltaT == -1:
+    selected_idx = 0
+else:
+    selected_idx = 1
+
+# 高亮选中的条形
+bars[selected_idx].set_edgecolor('gold')
+bars[selected_idx].set_linewidth(3)
+bars[selected_idx].set_alpha(0.9)
+
+# 添加数值标签
+for i, (bar, prob) in enumerate(zip(bars, probabilities)):
+    height = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2., height + 0.001,
+            f'{prob:.4f}', ha='center', va='bottom', 
+            fontsize=11, fontweight='bold')
+
+# 设置标签和标题
+plt.xlabel('Temperature Change Scenario (ΔT)', fontsize=12, fontweight='bold')
+plt.ylabel('Conditional Probability Density', fontsize=12, fontweight='bold')
+plt.title(f'Foshan: Probability Density for Standard ΔT Scenarios\n'
+          f'{base_background} | Selected: {deltaT_desc}',
+          fontsize=13, fontweight='bold', pad=20)
+
+# 添加网格（仅水平方向）
+plt.grid(axis='y', alpha=0.3, linestyle='--')
+
+plt.tight_layout()
+
+# 保存图片
+scenario_plot_path = f'C:/Users/SUST/Desktop/C/d-density/{name}_scenario_selection.png'
+plt.savefig(scenario_plot_path, dpi=300, bbox_inches='tight')
+print(f"情景选择条形图已保存为: {scenario_plot_path}")
+
+plt.show()
+
+# ==================== 步骤8: 保存最终判决结果 ====================
+print("\n步骤8: 保存最终判决结果")
+print("-" * 40)
+
+# 创建结果字典
+final_result = {
+    '城市': '佛山市',
+    '最佳滞后天数': best_lag,
+    '相关系数': best_corr,
+    'p值': best_p,
+    'ΔT均值': mu,
+    'ΔT标准差': sigma,
+    '高发期天数': high_inc_mask.sum(),
+    '高发期气温中位数': high_inc_median_temp,
+    '全年气温中位数': annual_temp_median,
+    '基础温度背景': base_background,
+    'P_ΔT_负1': prob_drop,
+    'P_ΔT_正1': prob_rise,
+    '敏感方向_ΔT': selected_deltaT,
+    '敏感度描述': sensitivity,
+    '归属组别': final_group,
+    '组别描述': group_desc,
+    '排名概率值': selected_prob
+}
+
+# 转换为DataFrame
+final_df = pd.DataFrame([final_result])
+
+# 保存结果
+result_path = f'C:/Users/SUST/Desktop/C/d-density/{name}_final_judgment.csv'
+final_df.to_csv(result_path, index=False, encoding='utf-8-sig')
+print(f"最终判决结果已保存为: {result_path}")
+
+# ==================== 步骤9: 输出最终分析报告 ====================
+print("\n" + "="*80)
+print("佛山市登革热温度波动与发病关系 - 最终判决报告")
+print("="*80)
+print(f"分析时间: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print()
+
+print("1. 基础统计分析:")
+print(f"   - 总病例数: {df['病例数'].sum():.0f} 例")
+print(f"   - 高发期天数: {high_inc_mask.sum()} 天")
+print(f"   - 高发期病例占比: {100*df.loc[high_inc_mask, '病例数'].sum()/df['病例数'].sum():.1f}%")
+print()
+
+print("2. 温度波动分析:")
+print(f"   - 最佳滞后天数: {best_lag} 天")
+print(f"   - 斯皮尔曼相关系数: ρ = {best_corr:.4f} (p = {best_p:.4f})")
+if best_p < 0.05:
+    print(f"   - 统计显著性: 显著 (p < 0.05)")
+elif best_p < 0.1:
+    print(f"   - 统计显著性: 边缘显著 (p < 0.1)")
+else:
+    print(f"   - 统计显著性: 不显著 (p ≥ 0.1)")
+print(f"   - ΔT分布: N(μ = {mu:.3f}°C, σ = {sigma:.3f}°C)")
+print()
+
+print("3. 背景温度判定:")
+print(f"   - 高发期气温中位数: {high_inc_median_temp:.2f}°C")
+print(f"   - 全年气温中位数: {annual_temp_median:.2f}°C")
+if high_inc_median_temp < annual_temp_median:
+    print(f"   - 判定: 高发期气温中位数 < 全年气温中位数")
+    print(f"   - 结论: During low temperature (低温背景)")
+else:
+    print(f"   - 判定: 高发期气温中位数 ≥ 全年气温中位数")
+    print(f"   - 结论: During high temperature (高温背景)")
+print()
+
+print("4. 敏感方向判定 (优胜劣汰逻辑):")
+print(f"   - P(ΔT = -1°C) = {prob_drop:.6f}")
+print(f"   - P(ΔT = +1°C) = {prob_rise:.6f}")
+if prob_drop > prob_rise:
+    print(f"   - 判定: P(降温) > P(升温)")
+    print(f"   - 结论: 对降温更敏感 (ΔT = -1°C)")
+else:
+    print(f"   - 判定: P(升温) > P(降温)")
+    print(f"   - 结论: 对升温更敏感 (ΔT = +1°C)")
+print()
+
+print("5. 最终判决 (原文图3c分组):")
+print(f"   - 基础背景: {base_background}")
+print(f"   - 敏感方向: ΔT = {selected_deltaT}°C ({sensitivity})")
+print(f"   - 归属组别: {final_group} ({group_desc})")
+print(f"   - 参与全国排名的概率值: {selected_prob:.6f}")
+print()
+
+print("6. 在全国比较中的位置:")
+print(f"   - 佛山市将参与 '{group_desc}' 的全国排名")
+print(f"   - 与同组其他城市比较概率密度值: {selected_prob:.6f}")
+print(f"   - 此值越高，表示在该情景下发病风险越高")
+print()
+
+print("7. 公共卫生启示:")
+if base_background == "During low temperature":
+    background_desc = "低温"
+else:
+    background_desc = "高温"
+
+if selected_deltaT == -1:
+    change_desc = f"降温1°C"
+    advice = f"在{background_desc}季节，需特别关注未来{best_lag}天内的降温过程"
+else:
+    change_desc = f"升温1°C"
+    advice = f"在{background_desc}季节，需特别关注未来{best_lag}天内的升温过程"
+
+print(f"   - 高发背景: {background_desc}季节")
+print(f"   - 敏感变化: {change_desc}")
+print(f"   - 预警建议: {advice}")
+print(f"   - 监测重点: 当预报显示{change_desc}时，应加强登革热监测")
+print()
+
+print("8. 后续分析建议:")
+print(f"   - 保存此结果文件: {result_path}")
+print(f"   - 对所有城市进行相同分析，汇总结果")
+print(f"   - 将佛山市的排名概率值 ({selected_prob:.6f}) 与全国同组城市比较")
+print(f"   - 生成类似原文图3c的全国排名热力图")
+print("="*80)

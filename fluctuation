@@ -1,0 +1,256 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm, gaussian_kde, spearmanr
+import matplotlib.cm as cm
+from matplotlib.colors import ListedColormap
+
+# 宋体中文配置
+plt.rcParams['font.sans-serif'] = ['SimSun']  # 宋体
+plt.rcParams['axes.unicode_minus'] = False    # 解决负号显示方块
+
+# =========切换城市仅修改这两行=========
+# 读取数据
+df = pd.read_csv(r"C:\Users\SUST\Desktop\C\病例信息\47三亚市_2024.csv")
+# 1佛山市_2024.csv   2广州市_2024.csv   3西双版纳傣族自治州_2024.csv 4深圳市_2024.csv  
+# 5中山市_2024.csv   6湛江市_2024.csv   7江门市_2024.csv   8清远市_2024.csv   9东莞市_2024.csv
+# 10珠海市_2024.csv  11肇庆市_2024.csv  12揭阳市_2024.csv  13韶关市_2024.csv  14云浮市_2024.csv
+# 15惠州市_2024.csv  16茂名市_2024.csv  17汕头市_2024.csv  18梧州市_2024.csv  19衡阳市_2024.csv
+# 20阳江市_2024.csv  21北海市_2024.csv  22潮州市_2024.csv  23梅州市_2024.csv
+# 24长沙市_2024.csv  25贵港市_2024.csv  26汕尾市_2024.csv  27德宏傣族景颇族自治州_2024.csv
+# 28永州市_2024.csv  29河源市_2024.csv  30杭州市_2024.csv  31玉林市_2024.csv
+# 32郴州市_2024.csv  33上海市_2024.csv  34贺州市_2024.csv  35泉州市_2024.csv  
+# 36金华市_2024.csv  37临沧市_2024.csv  38海口市_2024.csv  39南京市_2024.csv  
+# 40赣州市_2024.csv  41宁波市_2024.csv  42重庆市_2024.csv  43成都市_2024.csv  
+# 44邵阳市_2024.csv  45岳阳市_2024.csv  46娄底市_2024.csv  47三亚市_2024.csv 
+
+name = '47三亚'
+# ======================================
+
+# 转换日期列为datetime类型
+df['日期'] = pd.to_datetime(df['日期'])
+
+# 步骤1: 计算最佳滞后天数
+print("步骤1: 计算最佳滞后天数")
+print("-" * 40)
+
+# 定义高发期 (论文标准：日病例数 ≥ 总病例数的0.5%)
+high_inc_threshold = df['病例数'].sum() * 0.005
+df['is_high_inc'] = df['病例数'] >= high_inc_threshold
+high_inc_mask = df['is_high_inc']
+high_inc_data = df[high_inc_mask]
+
+# 遍历1~30天滞后，计算Spearman相关
+max_lag = 30
+correlation_results = []
+
+for lag in range(1, max_lag + 1):
+    temp_series = df['平均气温'].values
+    delta_t_full = np.full_like(temp_series, np.nan)
+    delta_t_full[lag:] = temp_series[lag:] - temp_series[:-lag]
+    
+    delta_t_high_inc = delta_t_full[high_inc_mask]
+    cases_high_inc = df.loc[high_inc_mask, '病例数'].values
+    
+    valid_mask = ~np.isnan(delta_t_high_inc)
+    if np.sum(valid_mask) > 10:
+        corr, p_value = spearmanr(delta_t_high_inc[valid_mask], cases_high_inc[valid_mask])
+        correlation_results.append({
+            'lag_days': lag,
+            'correlation': corr,
+            'p_value': p_value,
+            'n_valid': np.sum(valid_mask)
+        })
+
+corr_df = pd.DataFrame(correlation_results)
+if not corr_df.empty:
+    # 选取相关系数绝对值最大的滞后为最优lag
+    max_corr_idx = corr_df['correlation'].abs().idxmax()
+    best_lag = int(corr_df.loc[max_corr_idx, 'lag_days'])
+    best_corr = corr_df.loc[max_corr_idx, 'correlation']
+    best_p = corr_df.loc[max_corr_idx, 'p_value']
+    
+    print(f"最佳滞后天数: {best_lag} 天")
+    print(f"斯皮尔曼相关系数: {best_corr:.4f} (p={best_p:.4f})")
+    
+    # 步骤2: 判断高低温基线，自动分配配色
+    print("\n步骤2: 判定基础温度背景")
+    print("-" * 40)
+    
+    high_inc_median_temp = df.loc[high_inc_mask, '平均气温'].median()
+    annual_temp_median = df['平均气温'].median()
+    
+    if high_inc_median_temp < annual_temp_median:
+        base_background = "During low temperature"
+        curve_color = 'blue'
+        hist_color = 'skyblue'
+    else:
+        base_background = "During high temperature"
+        curve_color = 'red'
+        hist_color = 'lightcoral'
+    
+    print(f"高发期气温中位数: {high_inc_median_temp:.2f}°C")
+    print(f"全年气温中位数: {annual_temp_median:.2f}°C")
+    print(f"基础背景: {base_background}")
+    print(f"直方图颜色: {hist_color}")
+    
+    # 步骤3: 使用最优滞后计算ΔT，清洗有效样本
+    print("\n步骤3: 使用最佳滞后天数计算ΔT序列")
+    print("-" * 40)
+    
+    temp_series = df['平均气温'].values
+    delta_t_full = np.full_like(temp_series, np.nan)
+    delta_t_full[best_lag:] = temp_series[best_lag:] - temp_series[:-best_lag]
+    
+    high_inc_indices = df[high_inc_mask].index
+    delta_t_high_inc = delta_t_full[high_inc_indices]
+    cases_high_inc = df.loc[high_inc_mask, '病例数'].values
+    
+    valid_mask = ~np.isnan(delta_t_high_inc)
+    delta_t = delta_t_high_inc[valid_mask]
+    cases = cases_high_inc[valid_mask]
+    
+    print(f"有效数据点数: {len(delta_t)}")
+    print(f"ΔT范围: [{delta_t.min():.2f}°C, {delta_t.max():.2f}°C]")
+    print(f"病例数范围: [{cases.min()}, {cases.max()}]")
+    
+    # 步骤4: 绘图模块（已全部修复横轴边界与代码顺序）
+    print("\n步骤4: 创建合并可视化图表")
+    print("-" * 40)
+    
+    # 二维核密度
+    xy = np.vstack([delta_t, cases])
+    kde = gaussian_kde(xy)
+    
+    # 非对称横轴边界，仅保留10%微量留白
+    x_data_min = delta_t.min()
+    x_data_max = delta_t.max()
+    x_padding = (x_data_max - x_data_min) * 0.1
+    x_min_ext = x_data_min - x_padding
+    x_max_ext = x_data_max + x_padding
+    
+    # Y轴边界
+    y_min, y_max = cases.min(), cases.max()
+    y_range = y_max - y_min
+    y_min_ext = max(0, y_min - 0.1 * y_range)
+    y_max_ext = y_max + 0.1 * y_range
+    
+    # KDE网格（与横轴边界完全同步）
+    xx, yy = np.mgrid[x_min_ext:x_max_ext:100j, y_min_ext:y_max_ext:100j]
+    positions = np.vstack([xx.ravel(), yy.ravel()])
+    density = np.reshape(kde(positions).T, xx.shape)
+    
+    # 画布创建
+    fig, ax1 = plt.subplots(figsize=(6.6, 3.4))
+    ax1.grid(False)
+    
+    # 【修复1】提前拟合正态分布，解决pdf未定义报错
+    mu, sigma = norm.fit(delta_t)
+    x = np.linspace(delta_t.min(), delta_t.max(), 100)
+    pdf = norm.pdf(x, mu, sigma)
+    
+    # 【修复2】直方图bins与横轴边界统一，不再使用对称max_abs_delta_t
+    n_bins = 20
+    bins = np.linspace(x_min_ext, x_max_ext, n_bins + 1)
+    n, bins, patches = ax1.hist(delta_t, bins=bins, density=True, alpha=0.6,
+                               color=hist_color, edgecolor='black', linewidth=1.2,
+                               label='ΔT Distribution', zorder=-1)
+    
+    # 横轴、左纵轴范围
+    ax1.set_xlim(x_min_ext, x_max_ext)
+    ax1.set_ylim(0, max(n.max(), pdf.max()) * 1.05)
+    
+    # 双Y轴配置，隐藏左右纵轴刻度数字
+    ax2 = ax1.twinx()
+    ax1.tick_params(axis='y', labelleft=False)
+    ax2.tick_params(axis='y', labelright=False)
+    ax2.grid(False)
+    
+    # 自定义淡黄色透明KDE色板
+    from matplotlib.colors import LinearSegmentedColormap
+    light_yellow_cmap = LinearSegmentedColormap.from_list(
+        'light_yellow',
+        [(0.0, (1.0, 1.0, 0.9, 0.0)),
+         (0.3, (1.0, 1.0, 0.8, 0.0)),
+         (0.5, (1.0, 0.95, 0.7, 0.3)),
+         (0.7, (1.0, 0.9, 0.6, 0.6)),
+         (1.0, (0.95, 0.85, 0.5, 0.9))],
+        N=256
+    )
+    
+    density_min, density_max = density.min(), density.max()
+    density_levels = np.linspace(density_max * 0.1, density_max, 10)
+    
+    # KDE填充底层 z=1
+    cfset = ax2.contourf(xx, yy, density, levels=density_levels,
+                        cmap=light_yellow_cmap, extend='max', alpha=0.25, zorder=1)
+    # KDE轮廓线 z=2
+    contours = ax2.contour(xx, yy, density, levels=density_levels[::2],
+                          colors='goldenrod', alpha=0.1, linewidths=0.8, zorder=2)
+    # 病例散点 z=3
+    scatter = ax2.scatter(delta_t, cases, color='white', s=60,
+                         edgecolor='black', alpha=0.8, linewidth=1.0,
+                         label='Case Data Points', zorder=3)
+    
+    # 正态拟合曲线 顶层 z=4
+    ax1.plot(x, pdf, color=curve_color, linewidth=3, zorder=4,
+            label=f'Normal Fit (μ={mu:.2f}, σ={sigma:.2f})')
+    # ΔT均值虚线 z=5（全局最高线条）
+    ax1.axvline(mu, color=curve_color, linestyle='--', linewidth=2, zorder=5,
+                alpha=0.7, label=f'Mean ΔT = {mu:.2f}°C')
+    
+    # 图表标题（动态读取name，无需手动改城市）
+    title = f'Combined Visualization: ΔT Distribution with 2D Kernel Density\n'
+    title += f'{name} City | Lag={best_lag} days | {base_background}\n'
+    title += f'Correlation: ρ={best_corr:.3f} (p={best_p:.4f})'
+    plt.title(title, fontsize=14, fontweight='bold', pad=20)
+    
+    # 底部水平色条
+    plt.subplots_adjust(bottom=0.15)
+    cbar_ax = fig.add_axes([0.15, 0.08, 0.7, 0.02])
+    cbar = plt.colorbar(cfset, cax=cbar_ax, orientation='horizontal')
+    cbar.set_label('2D Kernel Density Estimate (Light Yellow Scale)', fontsize=11, labelpad=8)
+    
+    # 图例代码（保持注释关闭状态）
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    legend_items = []
+    legend_labels = []
+    legend_items.append(patches[0])
+    legend_labels.append(labels1[0])
+    legend_items.append(plt.Line2D([0], [0], color=curve_color, linewidth=3))
+    legend_labels.append(labels1[1])
+    legend_items.append(plt.Line2D([0], [0], color=curve_color, linestyle='--', linewidth=2, alpha=0.7))
+    legend_labels.append(labels1[2])
+    legend_items.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='white', markeredgecolor='black', markersize=8, markeredgewidth=1.0))
+    legend_labels.append(labels2[0])
+    
+    #fig.legend(legend_items, legend_labels, loc='lower center', bbox_to_anchor=(0.5, 0.01), ncol=4, fontsize=10, frameon=True, framealpha=0.9)
+    
+    # 左上角统计文本（注释关闭）
+    #stats_text = f'Statistics:\nΔT Mean: {mu:.2f}°C\nΔT Std: {sigma:.2f}°C\nMax Cases: {cases.max()}\nData Points: {len(delta_t)}'
+    #props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+    #ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', bbox=props, zorder=31)
+    
+    # 保存图片
+    image_name = f'C:/Users/SUST/Desktop/C/dynamic/{name}_ΔT_Case_Analysis_LightYellowKDE_lag{best_lag}.png'
+    plt.savefig(image_name, dpi=300, bbox_inches='tight')
+    print(f"优化后的合并图表已保存为: {image_name}")
+    plt.show()
+    
+    # 控制台输出分析汇总
+    print("\n" + "="*60)
+    print("完整分析结果摘要")
+    print("="*60)
+    print(f"1. 最佳滞后天数: {best_lag} 天")
+    print(f"2. 相关性强度: ρ = {best_corr:.4f} (p = {best_p:.4f})")
+    print(f"3. ΔT统计: μ = {mu:.2f}°C, σ = {sigma:.2f}°C")
+    print(f"4. 基础温度背景: {base_background}")
+    print(f"5. 直方图颜色: {hist_color} (低温:蓝色, 高温:红色)")
+    print(f"6. 核密度颜色: 淡黄色系 (低值完全透明)")
+    print(f"7. 高发期天数: {high_inc_mask.sum()} 天")
+    print(f"8. 有效数据点: {len(delta_t)} 个")
+    print("="*60)
+    
+else:
+    print("未能计算出有效的相关性结果，无法进行后续分析。")
